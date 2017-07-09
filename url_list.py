@@ -5,45 +5,57 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
+import os
+import re
 
-class Report(object):
-    def __init__(self, stock_cd, year, quarter, url_string):
-        self.stock_cd = stock_cd
-        self.year = year
-        self.quarter = quarter
-        self.url_string = url_string
+DART_URL_HOME = 'https://dart.fss.or.kr'
+STOCK_CD_FILE = 'stock_cd.txt'
+URL_FILE = 'url.txt'
+p = re.compile('\d{4}\.\d{2}')
+p2 = re.compile('\d{14}')
 
-    def __str__(self):
-        return "{}, {}, {}, {}".format(self.stock_cd, self.year, self.quarter, self.url_string)
+driver = webdriver.Chrome('chromedriver')
 
-def get_all_report_urls(stock_cd):
-    urls = []
+stock_cd_list = []
 
-    driver = webdriver.Chrome('chromedriver')
-    driver.get('https://dart.fss.or.kr/')
-    driver.find_element_by_id('textCrpNm').send_keys(stock_cd)
-    driver.find_element_by_id('date7').click()
-    driver.find_element_by_id('publicTypeButton_01').click()
-    driver.find_element_by_id('publicType1').click()
-    driver.find_element_by_id('publicType2').click()
-    driver.find_element_by_id('publicType3').click()
+fp = open(STOCK_CD_FILE, 'r')
+stock_cd_list = [item.strip() for item in fp.readlines()]
+fp.close()
 
-    for i in range(1,5):
-        print(i)
-        driver.execute_script("search({})".format(i))
+with open(URL_FILE, 'w') as fp:
+    for stock_cd in stock_cd_list:
+        if not os.path.exists(stock_cd):
+            os.makedirs(stock_cd)
+        urls = []
+        driver.get(DART_URL_HOME)
+        driver.find_element_by_id('textCrpNm').send_keys(stock_cd)
+        driver.find_element_by_id('date7').click()
+        driver.find_element_by_id('publicTypeButton_01').click()
+        driver.find_element_by_id('publicType1').click()
+        driver.find_element_by_id('publicType2').click()
+        driver.find_element_by_id('publicType3').click()
 
-        WebDriverWait(driver, timeout=5).until(lambda b: b.find_element_by_class_name('table_list'))
+        try:
+            for i in range(1,6):
+                driver.execute_script("search({})".format(i))
 
-        soup = BeautifulSoup(driver.page_source, "html.parser")
-        rows = soup.find('div', {'class':'table_list'}).table.tbody.find_all('tr')
+                WebDriverWait(driver, timeout=5).until(lambda b: b.find_element_by_class_name('table_list'))
 
-        for row in rows:
-            td = row.find_all('a', href=True)[1]
-            urls.append(td['href'])
+                soup = BeautifulSoup(driver.page_source, "html.parser")
+                rows = soup.find('div', {'class':'table_list'}).table.tbody.find_all('tr')
 
-    return urls
+                for row in rows:
+                    td = row.find_all('a', href=True)[1]
 
-if __name__ == '__main__':
-    urls = get_all_report_urls('005930')
-    for url in urls:
-        print (url)
+                    try:
+                        quater = p.search(list(td.children)[2].string).group()
+                    except:
+                        quater = 'Unknown'
+
+                    rcpno = p2.search(td['href']).group()
+
+                    print("{},{},{}".format(stock_cd, quater, rcpno))
+                    fp.write("{},{},{}\n".format(stock_cd, quater, rcpno))
+
+        except Exception as e:
+            pass
