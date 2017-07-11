@@ -36,17 +36,22 @@ for idx, item in enumerate(items):
 
             elements = soup.find_all(['p', 'table'], limit=10)
 
+            # 단위
             for e in elements:
-                # 단위
                 if not e.has_attr('border') and p.search(e.text) is not None:
                     unit = p.search(e.text).group(1)
-                    print(unit)
-                    fp.write("{}\n".format(unit))
+                    break
 
-                # 재무제표
+            print("{}{}".format(unit, '원'))
+            fp.write("{}{}\n".format(unit, '원'))
+
+            # 재무제표
+            for e in elements:
+
+                # border 속성이 있고 10줄 이상인 표를 찾음
                 if e.has_attr('border') and len(e.find_all('tr')) > 10:
 
-                    # thead 유무에 따라 순서를 바꿈
+                    # thead 가 없으면 그만큼 header를 건너뛴다
                     if e.thead is not None:
                         rows = e.tbody.find_all('tr')
                     else:
@@ -61,11 +66,13 @@ for idx, item in enumerate(items):
                     for r in rows:
                         cols = r.find_all('td')
 
-                        title = re.sub('[\s\[\]ㆍ]', '', cols[0].text.strip())
-                        amt = re.sub('[\s\(\),]', '', cols[1].text.strip())
+                        title = re.sub('[\s\[\]ㆍ]', '', cols[0].text.strip()) # 쓸데없는 문자 제거
+                        title = re.sub('\(.*?\)', '', title)    # 괄호 제거
+                        amt = re.sub('[\s\(\),]', '', cols[1].text.strip()).replace('△', '-')
 
-                        print("{}, {}".format(title, amt))
-                        fp.write("{},{}\n".format(title, amt))
+                        if len(title) > 0:
+                            print("{}, {}".format(title, amt))
+                            fp.write("{},{}\n".format(title, amt))
                     break
         except Exception as e:
             pass

@@ -6,6 +6,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 import os
 import re
+from time import sleep
 
 DART_URL_HOME = 'https://dart.fss.or.kr'
 STOCK_CD_FILE = 'stock_cd.txt'
@@ -23,9 +24,9 @@ fp.close()
 
 with open(URL_FILE, 'w') as fp:
     for stock_cd in stock_cd_list:
-        if not os.path.exists(stock_cd):
-            os.makedirs(stock_cd)
-        urls = []
+        #if not os.path.exists(stock_cd):
+        #    os.makedirs(stock_cd)
+
         driver.get(DART_URL_HOME)
         driver.find_element_by_id('textCrpNm').send_keys(stock_cd)
         driver.find_element_by_id('date7').click()
@@ -49,7 +50,7 @@ with open(URL_FILE, 'w') as fp:
                     try:
                         quater = p.search(list(td.children)[2].string).group()
                     except:
-                        quater = 'Unknown'
+                        quater = 'YYYY.MM'
 
                     rcpno = p2.search(td['href']).group()
 
