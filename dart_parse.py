@@ -6,6 +6,7 @@ from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import re
+from datetime import datetime, timedelta
 from time import sleep
 from dart_util import *
 
@@ -26,7 +27,7 @@ def report_parse(driver, gubun, stock_cd, quarter, rcpno):
         item_list = []
 
         with open(file_name, 'w') as fp:
-            print("{},{},{}".format(stock_cd, quarter, url))
+            #print("{},{},{}".format(stock_cd, quarter, url))
             fp.write("{},{},{}\n".format(stock_cd, quarter, url))
 
             try:
@@ -53,6 +54,8 @@ def report_parse(driver, gubun, stock_cd, quarter, rcpno):
 
             # 재무제표
             for e in elements:
+
+                item_list.clear()
 
                 # border 속성이 있고 10줄 이상인 표를 찾음
                 if e.name == 'table' and e.has_attr('border'):
@@ -106,6 +109,7 @@ def report_parse(driver, gubun, stock_cd, quarter, rcpno):
                         for item in item_list:
                             #print("{}, {}".format(title, amt))
                             fp.write("{},{}\n".format(item[0], item[1]))
+
                         break
     except Exception as e:
         print(e)
@@ -120,16 +124,28 @@ def main_proc(gubun):
 
     target_items = [item.strip() for item in fp.readlines()]
     fp.close()
-    '''
-    target_items = {
-    '012340,2001.12,20020401000900'
-    }
-    '''
+
+    #target_items = {'015750,2002.12,20040813000066'}
+
+    total_count = len(target_items)
+    start_time = datetime.now()
 
     for idx, item in enumerate(target_items):
         stock_cd, quarter, rcpno = item.split(',')
         report_parse(_driver, gubun, stock_cd, quarter, rcpno)
+        print("{},{},{}".format(stock_cd, quarter, rcpno))
         sleep(1)
+
+        if idx > 1 and (idx+1) % 10 == 0:
+            end_time = datetime.now()
+            gap_time_sec = (end_time - start_time).total_seconds()
+
+            # 남은시간 : 지금까지 처리한 건당 평균시간(초) * 남은 건수
+            left_time = gap_time_sec / (idx+1) * (total_count-idx+1)
+            estimated_end_time = end_time + timedelta(seconds=left_time)
+            perc = round((idx+1)/total_count*100, 2)
+
+            print("[{}/{}] 진행율 : {}%  예상종료일시 : {}".format(idx+1, total_count, perc, estimated_end_time.strftime('%m/%d %H:%S')))
 
 if __name__ == '__main__':
     main_proc('KOSDAQ')
