@@ -7,55 +7,67 @@ from bs4 import BeautifulSoup
 import os
 import re
 from time import sleep
+from dart_util import get_quarter_from_rcpno
+
+STOCK_CD_FILE = 'kosdaq_stock_cd.txt'
+URL_FILE = 'url_kosdaq.txt'
 
 DART_URL_HOME = 'https://dart.fss.or.kr'
-STOCK_CD_FILE = 'stock_cd.txt'
-URL_FILE = 'url.txt'
-p = re.compile('\d{4}\.\d{2}')
-p2 = re.compile('\d{14}')
+p_quarter = re.compile('\d{4}\.\d{2}')
+p_rcpno = re.compile('\d{14}')
 
-driver = webdriver.Chrome('chromedriver')
+def get_report_info(driver, fp, stock_cd):
+    driver.get(DART_URL_HOME)
+    driver.find_element_by_id('textCrpNm').send_keys(stock_cd)
+    driver.find_element_by_id('date7').click()
+    driver.find_element_by_id('publicTypeButton_01').click()
+    driver.find_element_by_id('publicType1').click()
+    driver.find_element_by_id('publicType2').click()
+    driver.find_element_by_id('publicType3').click()
 
-stock_cd_list = []
+    try:
+        for i in range(1,6):
+            driver.execute_script("search({})".format(i))
 
-fp = open(STOCK_CD_FILE, 'r')
-stock_cd_list = [item.strip() for item in fp.readlines()]
-fp.close()
+            WebDriverWait(driver, timeout=5).until(lambda b: b.find_element_by_class_name('table_list'))
 
-with open(URL_FILE, 'w') as fp:
-    for stock_cd in stock_cd_list:
-        #if not os.path.exists(stock_cd):
-        #    os.makedirs(stock_cd)
+            soup = BeautifulSoup(driver.page_source, "html.parser")
+            rows = soup.find('div', {'class':'table_list'}).table.tbody.find_all('tr')
 
-        driver.get(DART_URL_HOME)
-        driver.find_element_by_id('textCrpNm').send_keys(stock_cd)
-        driver.find_element_by_id('date7').click()
-        driver.find_element_by_id('publicTypeButton_01').click()
-        driver.find_element_by_id('publicType1').click()
-        driver.find_element_by_id('publicType2').click()
-        driver.find_element_by_id('publicType3').click()
+            for row in rows:
+                td = row.find_all('a', href=True)[1]
+                rcpno = p_rcpno.search(td['href']).group()
 
-        try:
-            for i in range(1,6):
-                driver.execute_script("search({})".format(i))
+                try:
+                    quarter = p_quarter.search(list(td.children)[2].string).group()
+                except:
+                    quarter = get_quarter_from_rcpno(rcpno)
 
-                WebDriverWait(driver, timeout=5).until(lambda b: b.find_element_by_class_name('table_list'))
+                print("{},{},{}".format(stock_cd, quarter, rcpno))
+                fp.write("{},{},{}\n".format(stock_cd, quarter, rcpno))
 
-                soup = BeautifulSoup(driver.page_source, "html.parser")
-                rows = soup.find('div', {'class':'table_list'}).table.tbody.find_all('tr')
+            if len(rows) < 15:
+                break
 
-                for row in rows:
-                    td = row.find_all('a', href=True)[1]
+            # 각 페이지별로 interval 1초
+            sleep(1)
 
-                    try:
-                        quater = p.search(list(td.children)[2].string).group()
-                    except:
-                        quater = 'YYYY.MM'
+    except Exception as e:
+        print(e)
 
-                    rcpno = p2.search(td['href']).group()
+if __name__ == '__main__':
+    _driver = webdriver.Chrome('chromedriver')
 
-                    print("{},{},{}".format(stock_cd, quater, rcpno))
-                    fp.write("{},{},{}\n".format(stock_cd, quater, rcpno))
+    stock_cd_list = []
 
-        except Exception as e:
-            pass
+    # 종목코드 불러오기
+    fp = open(STOCK_CD_FILE, 'r')
+    stock_cd_list = [item.strip() for item in fp.readlines()[49:]]
+    fp.close()
+
+    with open(URL_FILE, 'w') as fp:
+        #get_report_info(_driver, fp, '007390')
+
+        for stock_cd in stock_cd_list:
+            get_report_info(_driver, fp, stock_cd)
+            sleep(1) # 각 report별로 interval

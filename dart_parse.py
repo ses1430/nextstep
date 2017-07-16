@@ -2,54 +2,60 @@
 from selenium import webdriver
 from bs4 import BeautifulSoup
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import re
 from time import sleep
+from dart_util import *
 
 URL_PREFIX = 'https://dart.fss.or.kr/dsaf001/main.do?rcpNo='
-URL_FILE = 'url.txt'
+KOSPI_URL_FILE = 'url_kospi.txt'
+KOSDAQ_URL_FILE = 'url_kosdaq.txt'
 
-driver = webdriver.Chrome('chromedriver')
-p = re.compile(u'단위\s*:\s*(.*?)원')
+def report_parse(driver, gubun, stock_cd, quarter, rcpno):
+    unit = ''
+    p_unit = re.compile(u'단위\s*:\s*(\w*)')
+    p_rcpno = re.compile('\d{14}')
 
-f = open(URL_FILE, 'r')
-items = [item.strip() for item in f.readlines()]
-f.close()
+    try:
+        file_name = "{}\{}.{}.{}.txt".format(gubun, stock_cd, quarter, rcpno)
+        url = URL_PREFIX + rcpno
+        driver.get(url)
 
-for idx, item in enumerate(items):
-    stock_cd, quater, rcpno = item.split(',')
-    url = URL_PREFIX + rcpno
+        item_list = []
 
-    sleep(3)
-    driver.get(url)
-    file_name = "result\{}.{}.{}.txt".format(stock_cd, quater, rcpno)
+        with open(file_name, 'w') as fp:
+            print("{},{},{}".format(stock_cd, quarter, url))
+            fp.write("{},{},{}\n".format(stock_cd, quarter, url))
 
-    with open(file_name, 'w') as fp:
-        print("{},{},{},{}".format(idx, stock_cd, quater, url))
-        fp.write("{},{},{}\n".format(stock_cd, quater, url))
+            try:
+                driver.find_element_by_partial_link_text(u'재무에 관한 사항').click()
+            except NoSuchElementException as ex:
+                soup = BeautifulSoup(driver.page_source, "html.parser")
+                new_rcpno = p_rcpno.search(soup.find('select', {'id':'family'}).find_all('option')[1].attrs['value']).group(0)
+                url = URL_PREFIX + new_rcpno
+                driver.get(url)
+                driver.find_element_by_partial_link_text(u'재무에 관한 사항').click()
 
-        try:
-            driver.find_element_by_link_text(u'III. 재무에 관한 사항').click()
             driver.switch_to_frame('ifrm')
             soup = BeautifulSoup(driver.page_source, "html.parser")
-
-            elements = soup.find_all(['p', 'table'], limit=10)
+            elements = soup.find_all(['p', 'table'])
 
             # 단위
             for e in elements:
-                if not e.has_attr('border') and p.search(e.text) is not None:
-                    unit = p.search(e.text).group(1)
+                if not e.has_attr('border') and p_unit.search(e.text) is not None:
+                    unit = p_unit.search(e.text).group(1)
                     break
 
-            print("{}{}".format(unit, '원'))
-            fp.write("{}{}\n".format(unit, '원'))
+            #print("{}{}".format(unit))
+            fp.write("{}\n".format(unit))
 
             # 재무제표
             for e in elements:
 
                 # border 속성이 있고 10줄 이상인 표를 찾음
-                if e.has_attr('border') and len(e.find_all('tr')) > 10:
+                if e.name == 'table' and e.has_attr('border'):
 
                     # thead 가 없으면 그만큼 header를 건너뛴다
                     if e.thead is not None:
@@ -66,13 +72,64 @@ for idx, item in enumerate(items):
                     for r in rows:
                         cols = r.find_all('td')
 
-                        title = re.sub('[\s\[\]ㆍ]', '', cols[0].text.strip()) # 쓸데없는 문자 제거
-                        title = re.sub('\(.*?\)', '', title)    # 괄호 제거
-                        amt = re.sub('[\s\(\),]', '', cols[1].text.strip()).replace('△', '-')
+                        # 병합된 cell 이거나, 셀에 색상이 입혀져 있으면 건너뛴다
+                        if cols[0].has_attr('colspan') or cols[0].has_attr('backgroud-color'):
+                            continue
 
-                        if len(title) > 0:
-                            print("{}, {}".format(title, amt))
-                            fp.write("{},{}\n".format(title, amt))
-                    break
-        except Exception as e:
-            pass
+                        # 1개 항목만 들어있는 row
+                        if len(cols[0].find_all('br')) == 0:
+                            title = clean_title(cols[0].text) # 쓸데없는 문자 제거
+
+                            # title이 있을때만 금액 가져오기
+                            if len(title) > 0:
+                                amt = clean_amt(cols[1].text)
+
+                                # title, amt이 모두 있을때만 쓰기
+                                if len(amt) > 0:
+                                    item_list.append([title, amt])
+                        # 2개 이상의 항목이 들어있는 row
+                        else:
+                            try:
+                                title_list = [clean_title(item) for item in cols[0].children if item.name != 'br']
+                                amt_list = [clean_amt(item) for item in cols[1].children if item.name != 'br']
+
+                                for i in range(len(title_list)):
+                                    try:
+                                        item_list.append([title_list[i], amt_list[i]])
+                                    except IndexError:
+                                        item_list.append([title_list[i], '-'])
+                            except TypeError:
+                                pass
+
+                    # parsing 된 결과가 10row 이상일 경우 파일에 쓰고 break
+                    if len(item_list) > 10:
+                        for item in item_list:
+                            #print("{}, {}".format(title, amt))
+                            fp.write("{},{}\n".format(item[0], item[1]))
+                        break
+    except Exception as e:
+        print(e)
+
+def main_proc(gubun):
+    _driver = webdriver.Chrome('chromedriver')
+
+    if gubun == 'KOSPI':
+        fp = open(KOSPI_URL_FILE, 'r')
+    elif gubun == 'KOSDAQ':
+        fp = open(KOSDAQ_URL_FILE, 'r')
+
+    target_items = [item.strip() for item in fp.readlines()]
+    fp.close()
+    '''
+    target_items = {
+    '012340,2001.12,20020401000900'
+    }
+    '''
+
+    for idx, item in enumerate(target_items):
+        stock_cd, quarter, rcpno = item.split(',')
+        report_parse(_driver, gubun, stock_cd, quarter, rcpno)
+        sleep(1)
+
+if __name__ == '__main__':
+    main_proc('KOSDAQ')
