@@ -24,5 +24,5 @@ def clean_title(title):
 
 def clean_amt(amt):
     result = ''
-    result = re.sub('[\s\(\)\[\],]', '', amt.strip()).replace('△', '-')
+    result = re.sub('[\(\)\[\],]', '', amt.strip()).replace('△', '-')
     return result
