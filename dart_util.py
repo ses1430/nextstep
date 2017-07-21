@@ -1,5 +1,6 @@
-#-*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import re
+
 
 def get_quarter_from_rcpno(rcpno):
     year = int(rcpno[0:4])
@@ -16,13 +17,17 @@ def get_quarter_from_rcpno(rcpno):
 
     return quarter
 
+
 def clean_title(title):
-    result = ''
-    result = re.sub('[\s\[\]ㆍ]', '', title.strip()) # 쓸데없는 문자 제거
-    result = re.sub('\([&\sa-zA-Z]\)', '', result)    # 괄호안 제거 (영문, 특수문자)
+    result = re.sub('[\s\[\]\,ㆍ]', '', title.strip())  # 쓸데없는 문자 제거
+    #result = re.sub('\([&\sa-zA-Z]\)', '', result)    # 괄호안 제거 (영문, 특수문자)
     return result
 
+
 def clean_amt(amt):
-    result = ''
     result = re.sub('[\(\)\[\],]', '', amt.strip()).replace('△', '-')
-    return result
+
+    if re.sub('[\d]', '', result) == result:
+        return ''
+    else:
+        return result
