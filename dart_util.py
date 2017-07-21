@@ -25,9 +25,14 @@ def clean_title(title):
 
 
 def clean_amt(amt):
-    result = re.sub('[\(\)\[\],]', '', amt.strip()).replace('△', '-')
+    result = re.sub('[\(\)\[\],]', '', amt.strip())
+    result = re.sub('[△Δ]', '-', result)
 
+    # 숫자가 없으면 빈값 리턴
     if re.sub('[\d]', '', result) == result:
+        return ''
+    # -, 숫자가 아닌 다른 값이 포함되어 있으면 빈값 리턴
+    elif re.search('[^-0-9]', result) is not None:
         return ''
     else:
         return result

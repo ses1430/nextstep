@@ -6,11 +6,30 @@ import os
 import logging
 
 from datetime import datetime, timedelta
-from dart_util import *
 
 URL_PREFIX = 'https://dart.fss.or.kr/dsaf001/main.do?rcpNo='
+log_file = "{}.log".format(datetime.now().strftime('%Y%m%d%H%M%S'))
 
-logging.basicConfig(filename='dart_parse.log', level=logging.DEBUG)
+logging.basicConfig(filename=log_file, level=logging.DEBUG)
+
+
+def clean_title(title):
+    result = re.sub('[\s\[\]\,ㆍ]', '', title.strip())  # 쓸데없는 문자 제거
+    return result
+
+
+def clean_amt(amt):
+    result = re.sub('[\(\)\[\],]', '', amt.strip())
+    result = re.sub('[△Δ]', '-', result)
+
+    # 숫자가 없으면 빈값 리턴
+    if re.sub('[\d]', '', result) == result:
+        return ''
+    # -, 숫자가 아닌 다른 값이 포함되어 있으면 빈값 리턴
+    elif re.search('[^\-0-9]', result) is not None:
+        return ''
+    else:
+        return result
 
 
 def report_parse(stock_cd, year, month, rcpno):
@@ -31,7 +50,7 @@ def report_parse(stock_cd, year, month, rcpno):
 
         wfp.write("{}.{}.{}.{}\n".format(stock_cd, year, month, rcpno))
         
-        soup = BeautifulSoup(rfp.read(), "html.parser")
+        soup = BeautifulSoup(rfp.read(100000), "html.parser")
         elements = soup.find_all(['p', 'table'])
 
         # 단위
@@ -105,24 +124,24 @@ def report_parse(stock_cd, year, month, rcpno):
                                 except IndexError:
                                     pass
                         except Exception as e:
-                            logging.error('col' + e)
+                            logging.exception('col')
                     except Exception as e:
-                        logging.error('row' + e)
+                        logging.exception('row')
                         
                 # parsing 된 결과가 9row 이상일 경우 파일에 쓰고 break
                 if len(item_list) >= 9:
                     for item in item_list:
                         wfp.write("{},{}\n".format(item[0], item[1]))
                     break
-    except Exception as e:
-        logging.error('item', 'e')
 
-    logging.debug("{}.{}.{}.{} end".format(stock_cd, year, month, rcpno))
+    except Exception as e:
+        logging.exception(','.join([read_file_path, write_file_path]))
+
 
 def main_proc():
     target_items = [item for item in os.listdir('html')]
 
-    #target_items = ['000030.2001.12.20020401000085.html', '000020.2009.03.20090629000271.html']
+    # target_items = ['000030.2001.12.20020401000085.html', '000020.2009.03.20090629000271.html']
 
     total_count = len(target_items)
     start_time = datetime.now()
@@ -131,7 +150,7 @@ def main_proc():
         stock_cd, year, month, rcpno, _ = item.split('.')
         report_parse(stock_cd, year, month, rcpno)
 
-        if idx > 1 and (idx+1) % 10 == 0:
+        if idx > 1 and (idx+1) % 100 == 0:
             end_time = datetime.now()
             gap_time_sec = (end_time - start_time).total_seconds()
 
